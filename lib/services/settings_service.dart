@@ -111,7 +111,8 @@ enum SkipMarkerMode {
   /// Show the skip button; the viewer decides.
   button,
 
-  /// Show the button and skip on its own after [SettingsService.autoSkipDelay].
+  /// Show the button and skip on its own after [SettingsService.autoSkipDelay]
+  /// seconds, or immediately when that delay is 0.
   auto,
 }
 
@@ -589,7 +590,10 @@ class SettingsService extends BaseSharedPreferencesService {
   };
 
   static const forceSkipMarkerFallback = BoolPref('force_skip_marker_fallback');
-  static const autoSkipDelay = IntPref('auto_skip_delay', defaultValue: 5);
+  /// Seconds the skip button counts down before auto-skipping the marker.
+  /// 0 skips the marker immediately, with no countdown.
+  /// Only consulted while the marker's [SkipMarkerMode] is auto.
+  static final autoSkipDelay = IntPref('auto_skip_delay', defaultValue: 5, transform: (v) => v.clamp(0, 30));
   static const introPattern = StringPref('intro_pattern', defaultValue: defaultIntroPattern);
   static const creditsPattern = StringPref('credits_pattern', defaultValue: defaultCreditsPattern);
   static const customDownloadPathType = NullableStringPref('custom_download_path_type');
@@ -1455,7 +1459,7 @@ class SettingsService extends BaseSharedPreferencesService {
     'rewind_on_resume' || 'display_switch_delay' => (0, 10),
     'sleep_timer_duration' => (5, 240),
     'play_next_countdown' => (0, 30),
-    'auto_skip_delay' => (1, 30),
+    'auto_skip_delay' => (0, 30),
     'subtitle_font_size' => (10, 80),
     'subtitle_border_size' => (0, 5),
     'subtitle_position' || 'subtitle_background_opacity' || 'music_volume' => (0, 100),

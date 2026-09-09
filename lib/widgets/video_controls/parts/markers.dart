@@ -136,7 +136,22 @@ extension _PlexVideoControlsMarkerMethods on _PlexVideoControlsState {
     _cancelAutoSkipTimer();
     if (!_hasRenderedFirstFrame) return;
 
-    if (!_shouldAutoSkipForMarker(marker) || _autoSkipDelay <= 0) return;
+    if (!_shouldAutoSkipForMarker(marker)) return;
+
+    // A zero delay means "skip the moment the marker starts": no countdown and
+    // no dwell on the button. Deferred by a turn rather than skipped inline so
+    // it lands outside the marker-sync pass, exactly like the ticking path.
+    if (_autoSkipDelay <= 0) {
+      _autoSkipProgress.value = 0.0;
+      _autoSkipTimer = Timer(Duration.zero, () {
+        _autoSkipTimer = null;
+        if (!mounted) return;
+        _autoSkipActive.value = false;
+        if (_currentMarker != marker) return;
+        _performAutoSkip(skipAutoPlayCountdown: true);
+      });
+      return;
+    }
 
     _autoSkipProgress.value = 0.0;
     const tickDuration = Duration(milliseconds: 200);
