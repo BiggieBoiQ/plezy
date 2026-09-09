@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:auto_updater/auto_updater.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:plezy/utils/app_logger.dart';
 import 'package:plezy/utils/media_server_http_client.dart';
@@ -84,6 +85,33 @@ class UpdateService {
     } catch (error, stackTrace) {
       appLogger.e('Native update check failed', error: error, stackTrace: stackTrace);
     }
+  }
+
+  /// Picks the release asset matching this device's ABI.
+  ///
+  /// The fork's release workflow publishes one APK per ABI, named with the ABI
+  /// it was split for. Android reports supported ABIs best-first, so the first
+  /// match is the most native one the device can run.
+  static Future<String?> _apkAssetUrl(Object? assets) async {
+    if (!Platform.isAndroid || assets is! List) return null;
+
+    try {
+      final info = await DeviceInfoPlugin().androidInfo;
+      final names = <String, String>{
+        for (final asset in assets)
+          if (asset is Map && asset['name'] is String && asset['browser_download_url'] is String)
+            asset['name'] as String: asset['browser_download_url'] as String,
+      };
+
+      for (final abi in info.supportedAbis) {
+        for (final entry in names.entries) {
+          if (entry.key.endsWith('.apk') && entry.key.contains(abi)) return entry.value;
+        }
+      }
+    } catch (error, stackTrace) {
+      appLogger.w('Could not resolve an APK asset for this device', error: error, stackTrace: stackTrace);
+    }
+    return null;
   }
 
   /// Check if the macOS app was installed via Homebrew.
@@ -188,6 +216,10 @@ class UpdateService {
             'currentVersion': currentVersion,
             'latestVersion': cleanVersion,
             'releaseUrl': data['html_url'] as String,
+            // Null off Android, and null on Android when the release carries no
+            // APK this device's ABI can run. The dialog falls back to the
+            // release page in both cases.
+            'apkUrl': await _apkAssetUrl(data['assets']),
             'releaseName': data['name'] as String? ?? 'Version $cleanVersion',
             'releaseNotes': data['body'] as String? ?? '',
             'publishedAt': data['published_at'] as String,
