@@ -1,0 +1,188 @@
+name: Sync with upstream
+
+# Rebuilds `main` as: upstream/main + the fork's patch commit + regenerated i18n.
+#
+# The patch lives on the `patch` branch and is never rewritten here, so the
+# fork's changes stay one reviewable commit rather than drifting into a pile of
+# merges. Generated slang output is recreated rather than replayed: upstream
+# touches lib/i18n/*.g.dart on nearly every string change, and replaying our
+# copy of those files would conflict constantly.
+#
+# A clean sync force-pushes `main`. Anything needing a human stops before the
+# push and opens an issue, leaving `main` on the last good build.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Resolve and verify, but do not push
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_URL: https://github.com/edde746/plezy.git
+  PATCH_REF: patch
+  # Keep in step with FLUTTER_VERSION in build.yml.
+  FLUTTER_VERSION: "3.47.1"
+
+jobs:
+  sync:
+    name: Replay fork patch onto upstream
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Fetch upstream and patch
+        id: fetch
+        run: |
+          set -euo pipefail
+          git remote add upstream "$UPSTREAM_URL" 2>/dev/null \
+            || git remote set-url upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream main
+          git fetch --no-tags origin "$PATCH_REF:refs/remotes/origin/$PATCH_REF"
+
+          upstream_sha="$(git rev-parse upstream/main)"
+          patch_sha="$(git rev-parse "origin/$PATCH_REF")"
+          # The patch branch is never rebased, so its merge base with upstream
+          # stays put as upstream advances. Everything after it is ours.
+          patch_base="$(git merge-base upstream/main "origin/$PATCH_REF")"
+          {
+            echo "upstream_sha=$upstream_sha"
+            echo "patch_sha=$patch_sha"
+            echo "patch_base=$patch_base"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "upstream/main : $upstream_sha"
+          echo "patch tip     : $patch_sha"
+          echo "patch base    : $patch_base"
+          echo "--- commits to replay ---"
+          git log --oneline "$patch_base..origin/$PATCH_REF"
+
+          # Nothing to do when upstream has no commits we lack.
+          if git merge-base --is-ancestor "$upstream_sha" main; then
+            echo "synced=true" >> "$GITHUB_OUTPUT"
+            echo "main already contains upstream/main; nothing to sync."
+          else
+            echo "synced=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.fetch.outputs.synced == 'false'
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Replay the patch onto upstream/main
+        id: replay
+        if: steps.fetch.outputs.synced == 'false'
+        env:
+          PATCH_SHA: ${{ steps.fetch.outputs.patch_sha }}
+          PATCH_BASE: ${{ steps.fetch.outputs.patch_base }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B main upstream/main
+
+          if ! git cherry-pick "$PATCH_BASE..$PATCH_SHA"; then
+            git diff --name-only --diff-filter=U > /tmp/conflicts.txt || true
+            echo "--- conflicting files ---"
+            cat /tmp/conflicts.txt
+            git cherry-pick --abort || true
+            exit 1
+          fi
+
+      - name: Regenerate i18n
+        if: steps.fetch.outputs.synced == 'false'
+        run: |
+          set -euo pipefail
+          flutter pub get
+          dart run slang
+          if git diff --quiet -- lib/i18n; then
+            echo "slang output already current"
+          else
+            git add lib/i18n
+            git commit -m "chore(i18n): regenerate translations" \
+              -m "Derived from en.i18n.json by \`dart run slang\`, recreated on every upstream sync so upstream string churn cannot conflict with the patch commit."
+          fi
+
+      - name: Verify the patch still does what it claims
+        if: steps.fetch.outputs.synced == 'false'
+        run: |
+          set -euo pipefail
+          # A clean cherry-pick does not prove the change still has its intended
+          # effect: upstream may have reorganised the code around it. Assert the
+          # load-bearing lines survived before anything is pushed.
+          grep -q "'auto_skip_delay' => (0, 30)" lib/services/settings_service.dart
+          grep -q "BiggieBoiQ/plezy" lib/services/update_service.dart
+          grep -q "autoSkipDelayImmediate" lib/i18n/strings_en.g.dart
+          # This workflow is rebuilt from the patch branch too; if it went
+          # missing the next sync would never run again.
+          test -f .github/workflows/sync-upstream.yml
+          flutter analyze lib/services lib/widgets/video_controls lib/screens/settings lib/i18n
+          flutter test test/screens/settings/playback_settings_screen_test.dart
+
+      - name: Push
+        if: steps.fetch.outputs.synced == 'false' && inputs.dry_run != true
+        run: git push --force-with-lease origin main
+
+      - name: Report a sync that needs a human
+        if: failure() && steps.fetch.outputs.synced == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_SHA: ${{ steps.fetch.outputs.upstream_sha }}
+          PATCH_SHA: ${{ steps.fetch.outputs.patch_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo "The scheduled upstream sync stopped before pushing, so \`main\` is"
+            echo "unchanged and still holds the last good build."
+            echo
+            echo "- upstream/main: \`${UPSTREAM_SHA}\`"
+            echo "- patch commit: \`${PATCH_SHA}\`"
+            echo "- run: ${RUN_URL}"
+            echo
+            echo "Conflicting files (empty if the replay succeeded and verification failed instead):"
+            echo
+            echo '```'
+            cat /tmp/conflicts.txt 2>/dev/null || echo "(none recorded)"
+            echo '```'
+            echo
+            echo "Replay it by hand, then move both branches to the result:"
+            echo
+            echo '```bash'
+            echo "git fetch upstream main && git fetch origin patch"
+            echo "git checkout -B resync upstream/main"
+            echo "git cherry-pick origin/patch      # resolve conflicts here"
+            echo "dart run slang && git add lib/i18n && git commit -m 'chore(i18n): regenerate translations'"
+            echo "git push --force origin resync:main"
+            echo "git push --force origin <resolved-patch-commit>:patch"
+            echo '```'
+          } > /tmp/issue-body.md
+
+          title="Upstream sync needs attention"
+          existing="$(gh issue list --state open --search "in:title $title" \
+            --json number --jq '.[0].number // empty' || true)"
+
+          # Reuse one open issue rather than filing a fresh one every night.
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file /tmp/issue-body.md
+          else
+            gh issue create --title "$title ($(date -u +%Y-%m-%d))" --body-file /tmp/issue-body.md
+          fi
