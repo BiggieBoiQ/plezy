@@ -319,7 +319,9 @@ class PlaybackSettingsScreen extends StatelessWidget {
         pref: SettingsService.autoSkipDelay,
         icon: Symbols.timer_rounded,
         title: t.settings.autoSkipDelay,
-        subtitleBuilder: (v) => t.settings.autoSkipDelayDescription(seconds: v.toString()),
+        subtitleBuilder: (v) => v == 0
+            ? t.settings.autoSkipDelayImmediate
+            : t.settings.autoSkipDelayDescription(seconds: v.toString()),
         labelText: t.settings.secondsLabel,
         suffixText: t.settings.secondsShort,
       ),

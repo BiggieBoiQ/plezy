@@ -290,6 +290,7 @@
     "forceSkipMarkerFallbackDescription": "Use chapter title patterns even when Plex has markers",
     "autoSkipDelay": "Auto Skip Delay",
     "autoSkipDelayDescription": "Wait ${seconds} seconds before auto-skipping",
+    "autoSkipDelayImmediate": "Skip immediately",
     "introPattern": "Intro Marker Pattern",
     "introPatternDescription": "Regex pattern to match intro markers in chapter titles",
     "creditsPattern": "Credits Marker Pattern",

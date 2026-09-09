@@ -97,6 +97,32 @@ void main() {
     expect(find.descendant(of: tile, matching: find.text('Play immediately')), findsOneWidget);
   });
 
+  testWidgets('accepts a zero auto skip delay and labels it immediate', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 1400);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(MaterialApp(theme: monoTheme(dark: true), home: const PlaybackSettingsScreen()));
+    await tester.pumpAndSettle();
+
+    final title = find.text('Auto Skip Delay');
+    await tester.scrollUntilVisible(title, 500, scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(title);
+    await tester.pumpAndSettle();
+
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '0');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final settings = SettingsService.instance;
+    expect(settings.read(SettingsService.autoSkipDelay), 0);
+    final tile = find.widgetWithText(ListTile, 'Auto Skip Delay');
+    expect(find.descendant(of: tile, matching: find.text('Skip immediately')), findsOneWidget);
+  });
+
   testWidgets('toggles deinterlacing on the mpv path', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1000, 1400);
