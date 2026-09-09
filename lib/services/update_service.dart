@@ -15,8 +15,11 @@ import 'base_shared_preferences_service.dart';
 /// via auto_updater for native update dialogs and in-app installs.
 /// On all other platforms: falls back to GitHub API check + browser link dialog.
 class UpdateService {
-  static const String _githubRepo = 'edde746/plezy';
-  static const String _feedUrl = 'https://cdn.jsdelivr.net/gh/edde746/plezy@appcast/appcast.xml';
+  static const String _githubRepo = 'BiggieBoiQ/plezy';
+
+  /// Only consulted when the native updater is enabled, which this fork leaves
+  /// off by default. See [useNativeUpdater].
+  static const String _feedUrl = 'https://cdn.jsdelivr.net/gh/BiggieBoiQ/plezy@appcast/appcast.xml';
 
   static const String _keySkippedVersion = 'update_skipped_version';
   static const String _keyLastCheckTime = 'update_last_check_time';
@@ -40,7 +43,16 @@ class UpdateService {
 
   /// Whether the native auto_updater (Sparkle/WinSparkle) should be used.
   /// True on macOS (non-Homebrew) and installed Windows (has uninstaller).
+  ///
+  /// Off unless ENABLE_NATIVE_UPDATER is set at build time. Sparkle and
+  /// WinSparkle verify the appcast against the EdDSA public key compiled into
+  /// windows/runner/Runner.rc and macos/Runner/Info.plist; this fork does not
+  /// hold the matching private key, so a native check could only ever reject
+  /// its own feed. Leaving it off routes every install through the GitHub
+  /// releases check below, which needs no signing infrastructure. Flip it on
+  /// once this fork ships its own key pair and signed appcast.
   static bool get useNativeUpdater {
+    if (!const bool.fromEnvironment('ENABLE_NATIVE_UPDATER', defaultValue: false)) return false;
     if (!isUpdateCheckAvailable) return false;
     if (Platform.isMacOS) return !_isHomebrewInstall();
     if (Platform.isWindows) return _isInstalledApp() && !_isWingetInstall();
