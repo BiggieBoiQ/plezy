@@ -39,6 +39,8 @@ jobs:
   sync:
     name: Replay fork patch onto upstream
     runs-on: ubuntu-latest
+    outputs:
+      release_needed: ${{ steps.release_check.outputs.needed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -141,6 +143,28 @@ jobs:
         if: steps.fetch.outputs.synced == 'false' && inputs.dry_run != true
         run: git push --force-with-lease origin main
 
+      - name: Decide whether a release is needed
+        id: release_check
+        if: steps.fetch.outputs.synced == 'false' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Upstream commits far more often than it bumps the version, and the
+          # in-app updater only reacts to a version change. Releasing on every
+          # sync would burn CI and republish identical builds, so the pubspec
+          # version is the trigger.
+          version="$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d+ -f1)"
+          latest="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"
+          echo "pubspec=$version  latest release=${latest:-none}"
+          if [ "v$version" != "$latest" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "will publish v$version"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "already released; nothing to publish"
+          fi
+
       - name: Report a sync that needs a human
         if: failure() && steps.fetch.outputs.synced == 'false'
         env:
@@ -186,3 +210,13 @@ jobs:
           else
             gh issue create --title "$title ($(date -u +%Y-%m-%d))" --body-file /tmp/issue-body.md
           fi
+
+  release:
+    name: Publish the synced version
+    needs: sync
+    if: needs.sync.outputs.release_needed == 'true'
+    permissions:
+      contents: write
+    # secrets: inherit passes the ANDROID_* signing secrets through.
+    uses: ./.github/workflows/release-fork.yml
+    secrets: inherit
