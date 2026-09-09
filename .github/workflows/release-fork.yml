@@ -176,16 +176,22 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory dist -Force | Out-Null
           # The repo's own Inno Setup packaging. Given no -X64BuildDir it falls
           # back to the release output the previous step wrote, and pulls 7-Zip
           # and Inno Setup through choco if the runner lacks them.
-          .\windows\build-installer.ps1 -Version "$env:VERSION" -OutputDir dist
+          #
+          # -OutputDir is deliberately not passed. It only moves the portable
+          # archive: the generated setup.iss is written relative to the working
+          # directory and carries OutputDir=., so the installer always lands
+          # beside it here. Passing one splits the two outputs across two
+          # directories. Verified by running the script both ways.
+          .\windows\build-installer.ps1 -Version "$env:VERSION"
 
-          # The script emits fixed names; version them so assets from different
-          # releases cannot collide and their origin stays obvious.
-          Rename-Item dist/plezy-windows-installer.exe "plezy-$env:VERSION-windows-installer.exe"
-          Rename-Item dist/plezy-windows-x64-portable.7z "plezy-$env:VERSION-windows-x64-portable.7z"
+          # Fixed emitted names, versioned on the way into dist so assets from
+          # different releases cannot collide and their origin stays obvious.
+          New-Item -ItemType Directory dist -Force | Out-Null
+          Move-Item plezy-windows-installer.exe "dist/plezy-$env:VERSION-windows-installer.exe"
+          Move-Item plezy-windows-x64-portable.7z "dist/plezy-$env:VERSION-windows-x64-portable.7z"
           Get-ChildItem dist | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
