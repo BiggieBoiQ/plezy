@@ -170,19 +170,30 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build windows --release ${{ env.RELEASE_DART_DEFINES }}
-      - name: Zip the portable build
+      - name: Build the installer and portable archive
         shell: pwsh
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory dist | Out-Null
-          Compress-Archive -Path build/windows/x64/runner/Release/* `
-            -DestinationPath "dist/plezy-$env:VERSION-windows-x64.zip"
+          New-Item -ItemType Directory dist -Force | Out-Null
+          # The repo's own Inno Setup packaging. Given no -X64BuildDir it falls
+          # back to the release output the previous step wrote, and pulls 7-Zip
+          # and Inno Setup through choco if the runner lacks them.
+          .\windows\build-installer.ps1 -Version "$env:VERSION" -OutputDir dist
+
+          # The script emits fixed names; version them so assets from different
+          # releases cannot collide and their origin stays obvious.
+          Rename-Item dist/plezy-windows-installer.exe "plezy-$env:VERSION-windows-installer.exe"
+          Rename-Item dist/plezy-windows-x64-portable.7z "plezy-$env:VERSION-windows-x64-portable.7z"
+          Get-ChildItem dist | Select-Object Name, Length
+
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-portable
-          path: dist/*.zip
+          name: windows-installer
+          path: |
+            dist/*.exe
+            dist/*.7z
 
   publish:
     name: Publish release
@@ -203,7 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          find artifacts -type f \( -name '*.apk' -o -name '*.zip' \) -exec cp {} dist/ \;
+          find artifacts -type f \( -name '*.apk' -o -name '*.exe' -o -name '*.7z' \) -exec cp {} dist/ \;
           ls -la dist
 
       - name: Publish
