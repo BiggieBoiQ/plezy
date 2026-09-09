@@ -1,0 +1,210 @@
+name: Release (fork)
+
+# Builds and publishes this fork's own release.
+#
+# Upstream's build.yml cannot do it: its create-release job requires all five
+# platforms to succeed, and iOS/macOS need signing secrets a fork does not have.
+# This one builds only what this fork actually ships and publishes the APKs as
+# raw .apk assets, which is what the in-app updater downloads.
+#
+# The release is published, never a draft or prerelease: GitHub's
+# /releases/latest endpoint that the app polls ignores both.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (default: v + the pubspec version)"
+        default: ""
+        type: string
+      build_windows:
+        description: Also build Windows
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-fork-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Keep in step with FLUTTER_VERSION in build.yml.
+  FLUTTER_VERSION: "3.47.1"
+  RELEASE_DART_DEFINES: --dart-define=ENABLE_UPDATE_CHECK=true
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 '^version:' pubspec.yaml | sed 's/version: *//' | cut -d+ -f1)"
+          tag="${{ inputs.tag }}"
+          [ -n "$tag" ] || tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version tag=$tag"
+
+  android:
+    name: Build Android APKs
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require signing secrets
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set." >&2
+            echo "Android refuses to update an app whose signing key changed, so this" >&2
+            echo "fork must sign with its own keystore, consistently, forever." >&2
+            echo "Add ANDROID_KEYSTORE_BASE64, ANDROID_STORE_PASSWORD," >&2
+            echo "ANDROID_KEY_PASSWORD and ANDROID_KEY_ALIAS as repository secrets." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Configure signing
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE" | base64 --decode > android/app/upload-keystore.jks
+          # An empty or malformed secret yields a file Gradle fails on much later
+          # with a far less obvious message.
+          if [ ! -s android/app/upload-keystore.jks ]; then
+            echo "::error::Decoded keystore is empty; check ANDROID_KEYSTORE_BASE64." >&2
+            exit 1
+          fi
+          cat > android/key.properties <<PROPS
+          storePassword=${STORE_PASSWORD}
+          keyPassword=${KEY_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          storeFile=upload-keystore.jks
+          PROPS
+
+      - run: flutter pub get
+
+      - name: Build APKs
+        run: flutter build apk --release --split-per-abi ${{ env.RELEASE_DART_DEFINES }}
+
+      - name: Clean up keystore
+        if: always()
+        run: rm -f android/app/upload-keystore.jks android/key.properties
+
+      - name: Name APKs for the updater
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cd build/app/outputs/flutter-apk
+          # The in-app updater matches an asset by the ABI string in its name, so
+          # the ABI must survive into the published filename.
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            src="app-${abi}-release.apk"
+            [ -f "$src" ] || { echo "missing $src"; exit 1; }
+            cp "$src" "$GITHUB_WORKSPACE/dist/plezy-${VERSION}-${abi}.apk"
+          done
+          ls -la "$GITHUB_WORKSPACE/dist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: dist/*.apk
+
+  windows:
+    name: Build Windows
+    needs: version
+    if: ${{ inputs.build_windows }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release ${{ env.RELEASE_DART_DEFINES }}
+      - name: Zip the portable build
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+            -DestinationPath "dist/plezy-$env:VERSION-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: dist/*.zip
+
+  publish:
+    name: Publish release
+    needs: [version, android, windows]
+    # windows is skippable; only a real failure should stop the release.
+    if: ${{ always() && needs.android.result == 'success' && needs.windows.result != 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect assets
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find artifacts -type f \( -name '*.apk' -o -name '*.zip' \) -exec cp {} dist/ \;
+          ls -la dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes="Fork build of Plezy $VERSION.
+
+          Carries this fork's changes on top of upstream: a zero-second auto-skip
+          delay, and update checks pointed at this repository.
+
+          Android installs must be signed with this fork's key. If Plezy is
+          currently installed from upstream, Android will refuse the update and
+          it has to be uninstalled first (export settings before doing so)."
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            # Deliberately not a draft or prerelease: /releases/latest, which the
+            # in-app updater polls, skips both.
+            gh release create "$TAG" dist/* --title "Plezy $VERSION" --notes "$notes"
+          fi

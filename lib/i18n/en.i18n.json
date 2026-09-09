@@ -113,7 +113,14 @@
     "skipVersion": "Skip This Version",
     "viewRelease": "View Release",
     "latestVersion": "You are on the latest version",
-    "checkFailed": "Failed to check for updates"
+    "checkFailed": "Failed to check for updates",
+    "downloadAndInstall": "Download & Install",
+    "downloading": "Downloading update...",
+    "downloadingPercent": "Downloading update... ${percent}%",
+    "downloadFailed": "Download failed. Check your connection and try again.",
+    "installFailed": "Could not open the installer.",
+    "allowInstallsThenRetry": "Allow Plezy to install apps, then try again.",
+    "allowInstallsManually": "Allow Plezy to install unknown apps in Android settings, then try again."
   },
   "settings": {
     "title": "Settings",
