@@ -11,6 +11,19 @@ name: Release (fork)
 # /releases/latest endpoint that the app polls ignores both.
 
 on:
+  # Callable so the nightly sync can publish straight after it lands an upstream
+  # version bump. A reusable call runs inside the caller's run, which sidesteps
+  # GITHUB_TOKEN being unable to trigger a separate workflow_dispatch.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag (default: v + the pubspec version)"
+        default: ""
+        type: string
+      build_windows:
+        description: Also build Windows
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
@@ -43,6 +56,8 @@ jobs:
       tag: ${{ steps.v.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - id: v
         run: |
           set -euo pipefail
@@ -59,6 +74,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Require signing secrets
         env:
@@ -144,6 +161,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -173,6 +192,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: actions/download-artifact@v4
         with:
