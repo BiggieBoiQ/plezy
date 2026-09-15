@@ -377,6 +377,27 @@ class Translations$update$en {
 
 	/// en: 'Failed to check for updates'
 	String get checkFailed => 'Failed to check for updates';
+
+	/// en: 'Download & Install'
+	String get downloadAndInstall => 'Download & Install';
+
+	/// en: 'Downloading update...'
+	String get downloading => 'Downloading update...';
+
+	/// en: 'Downloading update... ${percent}%'
+	String downloadingPercent({required Object percent}) => 'Downloading update... ${percent}%';
+
+	/// en: 'Download failed. Check your connection and try again.'
+	String get downloadFailed => 'Download failed. Check your connection and try again.';
+
+	/// en: 'Could not open the installer.'
+	String get installFailed => 'Could not open the installer.';
+
+	/// en: 'Allow Plezy to install apps, then try again.'
+	String get allowInstallsThenRetry => 'Allow Plezy to install apps, then try again.';
+
+	/// en: 'Allow Plezy to install unknown apps in Android settings, then try again.'
+	String get allowInstallsManually => 'Allow Plezy to install unknown apps in Android settings, then try again.';
 }
 
 // Path: settings
@@ -911,6 +932,9 @@ class Translations$settings$en {
 
 	/// en: 'Wait ${seconds} seconds before auto-skipping'
 	String autoSkipDelayDescription({required Object seconds}) => 'Wait ${seconds} seconds before auto-skipping';
+
+	/// en: 'Skip immediately'
+	String get autoSkipDelayImmediate => 'Skip immediately';
 
 	/// en: 'Intro Marker Pattern'
 	String get introPattern => 'Intro Marker Pattern';
@@ -7148,6 +7172,13 @@ extension on Translations {
 			'update.viewRelease' => 'View Release',
 			'update.latestVersion' => 'You are on the latest version',
 			'update.checkFailed' => 'Failed to check for updates',
+			'update.downloadAndInstall' => 'Download & Install',
+			'update.downloading' => 'Downloading update...',
+			'update.downloadingPercent' => ({required Object percent}) => 'Downloading update... ${percent}%',
+			'update.downloadFailed' => 'Download failed. Check your connection and try again.',
+			'update.installFailed' => 'Could not open the installer.',
+			'update.allowInstallsThenRetry' => 'Allow Plezy to install apps, then try again.',
+			'update.allowInstallsManually' => 'Allow Plezy to install unknown apps in Android settings, then try again.',
 			'settings.title' => 'Settings',
 			'settings.supportDeveloper' => 'Support Plezy',
 			'settings.supportDeveloperDescription' => 'Donate via Liberapay to fund development',
@@ -7323,6 +7354,7 @@ extension on Translations {
 			'settings.forceSkipMarkerFallbackDescription' => 'Use chapter title patterns even when Plex has markers',
 			'settings.autoSkipDelay' => 'Auto Skip Delay',
 			'settings.autoSkipDelayDescription' => ({required Object seconds}) => 'Wait ${seconds} seconds before auto-skipping',
+			'settings.autoSkipDelayImmediate' => 'Skip immediately',
 			'settings.introPattern' => 'Intro Marker Pattern',
 			'settings.introPatternDescription' => 'Regex pattern to match intro markers in chapter titles',
 			'settings.creditsPattern' => 'Credits Marker Pattern',
@@ -7550,6 +7582,8 @@ extension on Translations {
 			'fileInfo.textBased' => 'Text Based',
 			'fileInfo.subtitleFormat' => 'Sidecar Format',
 			'fileInfo.provider' => 'Provider',
+			_ => null,
+		} ?? switch (path) {
 			'fileInfo.matchScore' => 'Match Score',
 			'fileInfo.externalDelivery' => 'Can Be Served Separately',
 			'fileInfo.sidecarPath' => 'Sidecar Path',
@@ -7558,8 +7592,6 @@ extension on Translations {
 			'fileInfo.timeBase' => 'Time Base',
 			'fileInfo.overallBitrate' => 'Overall Bitrate',
 			'fileInfo.path' => 'Path',
-			_ => null,
-		} ?? switch (path) {
 			'fileInfo.fileName' => 'File Name',
 			'fileInfo.size' => 'Size',
 			'fileInfo.totalSize' => 'Total Size',
@@ -8064,6 +8096,8 @@ extension on Translations {
 			'libraries.emptyTrashConfirm' => ({required Object title}) => 'Are you sure you want to empty trash for "${title}"?',
 			'libraries.manageLibraries' => 'Manage Libraries',
 			'libraries.sort' => 'Sort',
+			_ => null,
+		} ?? switch (path) {
 			'libraries.sortBy' => 'Sort By',
 			'libraries.filters' => 'Filters',
 			'libraries.confirmActionMessage' => 'Are you sure you want to perform this action?',
@@ -8072,8 +8106,6 @@ extension on Translations {
 			'libraries.libraryOptions' => 'Library options',
 			'libraries.content' => 'library content',
 			'libraries.selectLibrary' => 'Select library',
-			_ => null,
-		} ?? switch (path) {
 			'libraries.filtersWithCount' => ({required Object count}) => 'Filters (${count})',
 			'libraries.noRecommendations' => 'No recommendations available',
 			'libraries.noCollections' => 'No collections in this library',
@@ -8578,6 +8610,8 @@ extension on Translations {
 			'downloads.downloadDeleted' => 'Download deleted',
 			'downloads.deleteConfirm' => ({required Object title}) => 'Delete "${title}" from this device?',
 			'downloads.cancelledDownloadTitle' => 'Canceled Download',
+			_ => null,
+		} ?? switch (path) {
 			'downloads.cancelledDownloadMessage' => 'This download was canceled. What would you like to do?',
 			'downloads.allEpisodesAlreadyDownloaded' => 'All episodes already downloaded',
 			'downloads.resumeDownload' => 'Resume download',
@@ -8586,8 +8620,6 @@ extension on Translations {
 			'downloads.downloadedFileClickToComplete' => ({required Object file}) => 'Downloaded ${file} - Click to complete',
 			'downloads.partialDownloadClickToComplete' => 'Partially downloaded - Click to complete',
 			'downloads.deleting' => 'Deleting...',
-			_ => null,
-		} ?? switch (path) {
 			'downloads.deletingWithProgress' => ({required Object title, required Object current, required Object total}) => 'Deleting ${title}... (${current} of ${total})',
 			'downloads.queuedTooltip' => 'Queued',
 			'downloads.queuedFilesTooltip' => ({required Object files}) => 'Queued ${files}',
